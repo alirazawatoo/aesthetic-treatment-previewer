@@ -180,15 +180,17 @@ def under_eye_mask(image_rgb: np.ndarray, landmarks_px: np.ndarray, side: str) -
     min_x, min_y = np.min(poly, axis=0)
     max_x, max_y = np.max(poly, axis=0)
     cx = int((min_x + max_x) / 2)
-    cy = int((min_y + max_y) / 2)
     width = max(8, int(max_x - min_x))
     height = max(6, int(max_y - min_y))
-    # Place ellipse slightly below eye center
-    cy_under = int(cy + height * 0.35)
-    axes = (int(width * 0.55), int(height * 0.60))
+    # The ellipse hangs from the lower lid; the eye opening itself is cut out
+    # so lightening never reaches the white of the eye or the iris.
+    axes = (int(width * 0.5), int(height * 0.7))
     mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.ellipse(mask, (cx, cy_under), axes, 0, 0, 360, 255, thickness=-1)
-    return mask
+    cv2.ellipse(mask, (cx, int(max_y + height * 0.45)), axes, 0, 0, 360, 255, thickness=-1)
+    eye = np.zeros((h, w), dtype=np.uint8)
+    cv2.fillConvexPoly(eye, cv2.convexHull(poly.astype(np.int32)), 255)
+    eye = cv2.dilate(eye, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    return cv2.subtract(mask, eye)
 
 
 # --- Lip outer/inner ring utilities (avoid teeth warping) ---

@@ -65,3 +65,38 @@ def test_zero_intensity_procedures_are_noops(demo):
     image, face = demo
     assert np.array_equal(effects.lip_filler(image, face["landmarks_px"], 0), image)
     assert np.array_equal(effects.under_eye_reduction(image, face["landmarks_px"], 0), image)
+
+
+def _eye_opening(image, landmarks):
+    mask = np.zeros(image.shape[:2], np.uint8)
+    for side in ("left", "right"):
+        poly = face_utils.eye_polygon_from_landmarks(landmarks, side)
+        cv2.fillConvexPoly(mask, cv2.convexHull(poly.astype(np.int32)), 255)
+    return mask > 0
+
+
+def test_under_eye_region_stays_below_the_eye_opening(demo):
+    image, face = demo
+    lms = face["landmarks_px"]
+    region = segmentation.segment_regions(image, lms)["under_eye"] > 0
+    assert not (region & _eye_opening(image, lms)).any()
+
+
+def test_under_eye_reduction_leaves_the_eyes_alone(demo):
+    image, face = demo
+    lms = face["landmarks_px"]
+    eyes = _eye_opening(image, lms)
+    out = effects.under_eye_reduction(image, lms, 100)
+    diff = np.abs(out.astype(int) - image.astype(int))[eyes]
+    assert diff.mean() < 2
+
+
+def test_under_eye_reduction_does_not_turn_skin_green(demo):
+    image, face = demo
+    lms = face["landmarks_px"]
+    out = effects.under_eye_reduction(image, lms, 100)
+    changed = np.any(out != image, axis=2)
+    a_before = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)[..., 1][changed].astype(float).mean()
+    a_after = cv2.cvtColor(out, cv2.COLOR_RGB2LAB)[..., 1][changed].astype(float).mean()
+    assert a_after > 128, "OpenCV LAB a=128 is neutral; below it is green"
+    assert a_before - a_after < 4

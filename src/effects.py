@@ -199,10 +199,12 @@ def under_eye_reduction(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensi
     lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
     L, A, B = cv2.split(lab)
     Lf = L.astype(np.float32)
-    # Lighten and reduce bluish/purplish tint
     deltaL = (255.0 - Lf) * (0.35 * s)
-    A2 = (A.astype(np.float32) * (1.0 - 0.18 * s)).clip(0, 255).astype(np.uint8)
-    B2 = np.clip(B.astype(np.float32) + 18.0 * s, 0, 255).astype(np.uint8)
+    # OpenCV stores a/b offset by 128 (neutral). Pull only the purple-red excess
+    # and the blue cast toward neutral; scaling the raw channel turned skin green.
+    Af, Bf = A.astype(np.float32), B.astype(np.float32)
+    A2 = np.clip(Af - np.maximum(Af - 128.0, 0.0) * 0.18 * s, 0, 255).astype(np.uint8)
+    B2 = np.clip(Bf + np.maximum(128.0 - Bf, 0.0) * 0.5 * s, 0, 255).astype(np.uint8)
     L_new = np.clip(Lf + deltaL, 0, 255).astype(np.uint8)
     lab_new = cv2.merge([L_new, A2, B2])
     rgb_bright = cv2.cvtColor(lab_new, cv2.COLOR_LAB2RGB)

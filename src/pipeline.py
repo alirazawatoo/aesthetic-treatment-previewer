@@ -104,6 +104,7 @@ def apply_aesthetic_procedures_pipeline(
                     steps=gen_steps,
                     seed=int(seed) if seed is not None else None,
                 )
+                info["used_generative"] = True
 
             if ue_int and ue_int > 0 and "under_eye" in regions and bbox is not None:
                 under_eye_mask = regions["under_eye"]
@@ -128,14 +129,16 @@ def apply_aesthetic_procedures_pipeline(
                     steps=gen_steps,
                     seed=int(seed) + 1 if seed is not None else None,
                 )
+                info["used_generative"] = True
 
-            info["used_generative"] = bool((lip_int and "lip_ring" in regions) or (ue_int and "under_eye" in regions))
             return result_rgb, info
         except (ImportError, OSError):
             info["warnings"].append(
                 "Generative dependencies or cached weights are unavailable; using non-generative effects instead."
             )
-            # Fall through to classical path below.
+            # Start over so a region edited before the failure is not edited twice.
+            result_rgb = base_rgb.copy()
+            info["used_generative"] = False
 
     # Classical (non-generative) fallback or explicit choice.
     if lip_int and lip_int > 0:

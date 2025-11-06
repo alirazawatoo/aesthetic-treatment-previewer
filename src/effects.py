@@ -142,9 +142,8 @@ def lip_filler(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensity: int) 
     src_all = np.vstack([src, anchors])
     dst_all = np.vstack([dst, anchors])
 
-    tform = PiecewiseAffineTransform()
-    ok = tform.estimate(src_all, dst_all)
-    if not ok:
+    tform = PiecewiseAffineTransform.from_estimate(src_all, dst_all)
+    if not tform:
         return image_rgb
 
     warped = warp(

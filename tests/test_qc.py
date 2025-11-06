@@ -31,3 +31,14 @@ def test_run_qc_handles_no_face_gracefully():
     assert out.get("overall_pass") is False
     assert any("No face detected" in msg for msg in out.get("messages", []))
 
+
+
+def test_synthetic_demo_face_is_detected_and_passes_every_check():
+    from src.demo_face import make_demo_face
+
+    face = make_demo_face()
+    out = qc.run_qc(face)
+
+    assert out["face_present"] is True
+    assert out["overall_pass"] is True, out["messages"]
+    assert np.array_equal(face, make_demo_face()), "the demo face must be deterministic"

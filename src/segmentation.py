@@ -17,7 +17,6 @@ If `landmarks_px` is None, returns empty dict.
 """
 
 import numpy as np
-from typing import Optional, Dict
 
 from .face_utils import (
     lip_ring_mask_from_landmarks,
@@ -25,8 +24,8 @@ from .face_utils import (
 )
 
 
-def segment_regions(image_rgb: np.ndarray, landmarks_px: Optional[np.ndarray]) -> Dict[str, np.ndarray]:
-    out: Dict[str, np.ndarray] = {}
+def segment_regions(image_rgb: np.ndarray, landmarks_px: np.ndarray | None) -> dict[str, np.ndarray]:
+    out: dict[str, np.ndarray] = {}
     if landmarks_px is None:
         return out
 
@@ -35,7 +34,6 @@ def segment_regions(image_rgb: np.ndarray, landmarks_px: Optional[np.ndarray]) -
     if lip_ring is not None:
         out["lip_ring"] = lip_ring
 
-    # Under-eye: left + right
     m_l = under_eye_mask(image_rgb, landmarks_px, side="left")
     m_r = under_eye_mask(image_rgb, landmarks_px, side="right")
     if m_l is not None or m_r is not None:

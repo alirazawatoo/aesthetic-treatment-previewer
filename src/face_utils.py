@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from typing import Dict, Optional, Tuple
 
 try:
     import mediapipe as mp
@@ -9,34 +8,32 @@ except ImportError:
 
 
 _FACE_MESH_IDXS = {
-    "left_eye": 33,   # outer corner
-    "right_eye": 263, # outer corner
+    "left_eye": 33,  # outer corner
+    "right_eye": 263,  # outer corner
 }
 
 
-def _haar_face_bbox(image_rgb: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+def _haar_face_bbox(image_rgb: np.ndarray) -> tuple[int, int, int, int] | None:
     """Fallback face bbox detection using OpenCV Haar cascade. Returns largest bbox or None."""
     gray = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
-    cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
     face_cascade = cv2.CascadeClassifier(cascade_path)
     if face_cascade.empty():
         return None
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
     if len(faces) == 0:
         return None
-    # Choose largest area face
     x, y, w, h = max(faces, key=lambda b: b[2] * b[3])
     return int(x), int(y), int(w), int(h)
 
 
-def detect_face_landmarks(image_rgb: np.ndarray) -> Optional[Dict]:
+def detect_face_landmarks(image_rgb: np.ndarray) -> dict | None:
     """
     Returns dict with keys: 'landmarks_px' (Nx2), 'bbox' (x, y, w, h), 'roll_deg' (float)
     or None if no face.
     """
     h, w = image_rgb.shape[:2]
 
-    # Try MediaPipe FaceMesh first if available
     if mp is not None:
         with mp.solutions.face_mesh.FaceMesh(
             static_image_mode=True,
@@ -60,7 +57,6 @@ def detect_face_landmarks(image_rgb: np.ndarray) -> Optional[Dict]:
                 roll_deg = compute_roll_degrees(pts)
                 return {"landmarks_px": pts, "bbox": bbox, "roll_deg": roll_deg}
 
-    # Fallback: Haar-based bbox only
     bbox = _haar_face_bbox(image_rgb)
     if bbox is None:
         return None
@@ -91,7 +87,7 @@ def skin_mask_from_landmarks(image_rgb: np.ndarray, landmarks_px: np.ndarray) ->
     return mask
 
 
-def skin_mask_from_bbox(image_rgb: np.ndarray, bbox: Tuple[int, int, int, int]) -> np.ndarray:
+def skin_mask_from_bbox(image_rgb: np.ndarray, bbox: tuple[int, int, int, int]) -> np.ndarray:
     """Approximate skin mask as an ellipse within the face bbox (fallback if landmarks missing)."""
     h, w = image_rgb.shape[:2]
     x, y, bw, bh = bbox
@@ -105,7 +101,7 @@ def skin_mask_from_bbox(image_rgb: np.ndarray, bbox: Tuple[int, int, int, int]) 
     return mask
 
 
-def crop_with_bbox(image_rgb: np.ndarray, bbox: Tuple[int, int, int, int], margin: float = 0.1) -> np.ndarray:
+def crop_with_bbox(image_rgb: np.ndarray, bbox: tuple[int, int, int, int], margin: float = 0.1) -> np.ndarray:
     x, y, bw, bh = bbox
     h, w = image_rgb.shape[:2]
     mx = int(bw * margin)
@@ -122,7 +118,7 @@ def _unique_idxs_from_connections(connections) -> list:
     return sorted({idx for pair in connections for idx in pair})
 
 
-def get_lip_indices() -> Optional[list]:
+def get_lip_indices() -> list | None:
     if mp is None:
         return None
     try:
@@ -132,21 +128,18 @@ def get_lip_indices() -> Optional[list]:
         return None
 
 
-def get_eye_indices(side: str) -> Optional[list]:
+def get_eye_indices(side: str) -> list | None:
     if mp is None:
         return None
     try:
         fmc = mp.solutions.face_mesh_connections
-        if side.lower().startswith("l"):
-            conns = fmc.FACEMESH_LEFT_EYE
-        else:
-            conns = fmc.FACEMESH_RIGHT_EYE
+        conns = fmc.FACEMESH_LEFT_EYE if side.lower().startswith("l") else fmc.FACEMESH_RIGHT_EYE
         return _unique_idxs_from_connections(conns)
     except AttributeError:
         return None
 
 
-def lip_points_from_landmarks(landmarks_px: np.ndarray) -> Optional[np.ndarray]:
+def lip_points_from_landmarks(landmarks_px: np.ndarray) -> np.ndarray | None:
     idxs = get_lip_indices()
     if not idxs:
         return None
@@ -156,7 +149,7 @@ def lip_points_from_landmarks(landmarks_px: np.ndarray) -> Optional[np.ndarray]:
         return None
 
 
-def lip_mask_from_landmarks(image_rgb: np.ndarray, landmarks_px: np.ndarray) -> Optional[np.ndarray]:
+def lip_mask_from_landmarks(image_rgb: np.ndarray, landmarks_px: np.ndarray) -> np.ndarray | None:
     """Create a convex-hull mask over the lip region. Returns None if unavailable."""
     pts = lip_points_from_landmarks(landmarks_px)
     if pts is None or len(pts) < 3:
@@ -168,7 +161,7 @@ def lip_mask_from_landmarks(image_rgb: np.ndarray, landmarks_px: np.ndarray) -> 
     return mask
 
 
-def eye_polygon_from_landmarks(landmarks_px: np.ndarray, side: str) -> Optional[np.ndarray]:
+def eye_polygon_from_landmarks(landmarks_px: np.ndarray, side: str) -> np.ndarray | None:
     idxs = get_eye_indices(side)
     if not idxs:
         return None
@@ -178,7 +171,7 @@ def eye_polygon_from_landmarks(landmarks_px: np.ndarray, side: str) -> Optional[
         return None
 
 
-def under_eye_mask(image_rgb: np.ndarray, landmarks_px: np.ndarray, side: str) -> Optional[np.ndarray]:
+def under_eye_mask(image_rgb: np.ndarray, landmarks_px: np.ndarray, side: str) -> np.ndarray | None:
     """Approximate under-eye area with an ellipse below the eye polygon."""
     poly = eye_polygon_from_landmarks(landmarks_px, side)
     if poly is None or len(poly) < 3:
@@ -203,7 +196,7 @@ _LIP_OUTER_IDX = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291]
 _LIP_INNER_IDX = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308]
 
 
-def lip_ring_mask_from_landmarks(image_rgb: np.ndarray, landmarks_px: np.ndarray) -> Optional[np.ndarray]:
+def lip_ring_mask_from_landmarks(image_rgb: np.ndarray, landmarks_px: np.ndarray) -> np.ndarray | None:
     """Returns outer-minus-inner lip mask (the lip tissue), feather-ready."""
     h, w = image_rgb.shape[:2]
     if landmarks_px is None or landmarks_px.shape[0] < 400:  # sanity

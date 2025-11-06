@@ -1,26 +1,26 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import cv2
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
 
-from .qc import run_qc
+from .diffusion import sdxl_inpaint_edit
+from .effects import apply_effects, lip_filler, under_eye_reduction
 from .face_utils import (
+    crop_with_bbox,
     skin_mask_from_bbox,
     skin_mask_from_landmarks,
-    crop_with_bbox,
 )
-from .effects import apply_effects, lip_filler, under_eye_reduction
+from .qc import run_qc
 from .segmentation import segment_regions
-from .diffusion import sdxl_inpaint_edit
 
 
-def run_qc_pipeline(image_rgb: np.ndarray) -> Dict[str, Any]:
+def run_qc_pipeline(image_rgb: np.ndarray) -> dict[str, Any]:
     """Thin wrapper around QC to keep app.py UI-focused."""
     return run_qc(image_rgb)
 
 
-def compute_skin_mask(image_rgb: np.ndarray, face: Dict[str, Any]) -> np.ndarray:
+def compute_skin_mask(image_rgb: np.ndarray, face: dict[str, Any]) -> np.ndarray:
     """Compute a skin mask from landmarks when available, else fall back to bbox."""
     if face is None:
         raise ValueError("Face metadata is required to compute a skin mask.")
@@ -49,7 +49,7 @@ def apply_adjustments_pipeline(
 def apply_aesthetic_procedures_pipeline(
     base_rgb: np.ndarray,
     image_for_regions: np.ndarray,
-    face: Dict[str, Any],
+    face: dict[str, Any],
     use_gen: bool,
     gen_strength: float,
     gen_steps: int,
@@ -59,8 +59,8 @@ def apply_aesthetic_procedures_pipeline(
     lip_negative_prompt: str,
     eye_prompt: str,
     eye_negative_prompt: str,
-    seed: Optional[int] = None,
-) -> Tuple[np.ndarray, Dict[str, Any]]:
+    seed: int | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
     """Apply lip filler and under-eye reduction using generative or classical paths.
 
     Returns:
@@ -70,7 +70,7 @@ def apply_aesthetic_procedures_pipeline(
             - warnings: List[str]
     """
     result_rgb = base_rgb.copy()
-    info: Dict[str, Any] = {"used_generative": False, "warnings": []}
+    info: dict[str, Any] = {"used_generative": False, "warnings": []}
 
     if not lip_int and not ue_int:
         return result_rgb, info
@@ -79,7 +79,6 @@ def apply_aesthetic_procedures_pipeline(
     if landmarks is None:
         return result_rgb, info
 
-    # If generative editing is enabled, try SDXL inpainting first.
     if use_gen:
         try:
             regions = segment_regions(image_for_regions, landmarks)
@@ -87,9 +86,7 @@ def apply_aesthetic_procedures_pipeline(
 
             if lip_int and lip_int > 0 and "lip_ring" in regions and bbox is not None:
                 lip_mask = regions["lip_ring"]
-                strength_lip = float(
-                    np.clip(0.35 + 0.5 * (lip_int / 100.0), 0.1, 0.9)
-                )
+                strength_lip = float(np.clip(0.35 + 0.5 * (lip_int / 100.0), 0.1, 0.9))
                 # Allow geometry change: dilate lip mask according to intensity and face scale.
                 bw = bbox[2]
                 k = int(np.clip(bw * 0.015 * (lip_int / 100.0) * 1.5, 2, 24))
@@ -108,18 +105,12 @@ def apply_aesthetic_procedures_pipeline(
 
             if ue_int and ue_int > 0 and "under_eye" in regions and bbox is not None:
                 under_eye_mask = regions["under_eye"]
-                strength_eye = float(
-                    np.clip(0.30 + 0.45 * (ue_int / 100.0), 0.1, 0.9)
-                )
+                strength_eye = float(np.clip(0.30 + 0.45 * (ue_int / 100.0), 0.1, 0.9))
                 # Slight dilation to give model room, but smaller than lips.
                 bw = bbox[2]
                 k2 = int(np.clip(bw * 0.010 * (ue_int / 100.0), 1, 16))
-                kernel2 = cv2.getStructuringElement(
-                    cv2.MORPH_ELLIPSE, (2 * k2 + 1, 2 * k2 + 1)
-                )
-                under_eye_mask_edit = cv2.dilate(
-                    under_eye_mask, kernel2, iterations=1
-                )
+                kernel2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k2 + 1, 2 * k2 + 1))
+                under_eye_mask_edit = cv2.dilate(under_eye_mask, kernel2, iterations=1)
                 result_rgb = sdxl_inpaint_edit(
                     result_rgb,
                     under_eye_mask_edit,
@@ -140,7 +131,6 @@ def apply_aesthetic_procedures_pipeline(
             result_rgb = base_rgb.copy()
             info["used_generative"] = False
 
-    # Classical (non-generative) fallback or explicit choice.
     if lip_int and lip_int > 0:
         result_rgb = lip_filler(result_rgb, landmarks, lip_int)
     if ue_int and ue_int > 0:
@@ -152,7 +142,7 @@ def apply_aesthetic_procedures_pipeline(
 def compute_identity_similarity(
     original_rgb: np.ndarray,
     edited_rgb: np.ndarray,
-    bbox: Tuple[int, int, int, int],
+    bbox: tuple[int, int, int, int],
     margin: float = 0.1,
 ) -> float:
     """Compute structural pixel similarity; this is not biometric identity verification."""
@@ -171,4 +161,3 @@ def compute_identity_similarity(
     if min(min_h, min_w) < 7:
         return 0.0
     return float(ssim(orig_g_resized, res_g_resized))
-

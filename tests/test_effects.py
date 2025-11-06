@@ -29,4 +29,3 @@ def test_individual_effects_are_noops_when_intensity_zero():
     assert np.array_equal(out_wrinkle, image)
     assert np.array_equal(out_tone, image)
     assert np.array_equal(out_pigment, image)
-

@@ -67,34 +67,42 @@ def test_sdxl_inpaint_edit_preserves_shape_and_edits_roi(monkeypatch):
     assert np.any(out[20:44, 20:44] != 0)
 
 
-
 def test_empty_mask_never_loads_a_model(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("Empty mask must not initialize the model")
+
     monkeypatch.setattr(diffusion, "_ensure_pipeline", forbidden)
     image = np.zeros((32, 32, 3), dtype=np.uint8)
-    assert np.array_equal(diffusion.sdxl_inpaint_edit(image, np.zeros((32,32),dtype=np.uint8), prompt="synthetic"), image)
+    assert np.array_equal(
+        diffusion.sdxl_inpaint_edit(image, np.zeros((32, 32), dtype=np.uint8), prompt="synthetic"), image
+    )
 
 
 def test_roi_includes_last_pixel_when_padding_is_zero():
-    mask = np.zeros((8,8), dtype=np.uint8)
-    mask[7,7] = 255
-    assert diffusion._roi_from_mask(mask,pad=0) == (7,7,8,8)
+    mask = np.zeros((8, 8), dtype=np.uint8)
+    mask[7, 7] = 255
+    assert diffusion._roi_from_mask(mask, pad=0) == (7, 7, 8, 8)
 
 
 def test_loader_requires_cached_weights(monkeypatch):
     calls = []
+
     class Pipeline:
         @classmethod
         def from_pretrained(cls, model_id, **kwargs):
             calls.append(kwargs)
             return cls()
-        def to(self, device): return self
-        def enable_attention_slicing(self): pass
+
+        def to(self, device):
+            return self
+
+        def enable_attention_slicing(self):
+            pass
+
     monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(float16="float16"))
     monkeypatch.setitem(sys.modules, "diffusers", types.SimpleNamespace(StableDiffusionXLInpaintPipeline=Pipeline))
     monkeypatch.setattr(diffusion, "_PIPE", None)
-    monkeypatch.setattr(diffusion, "_get_device_and_dtype", lambda torch: ("cpu","float32"))
+    monkeypatch.setattr(diffusion, "_get_device_and_dtype", lambda torch: ("cpu", "float32"))
     diffusion._ensure_pipeline("synthetic-model")
     assert calls[0]["local_files_only"] is True
 

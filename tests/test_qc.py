@@ -32,7 +32,6 @@ def test_run_qc_handles_no_face_gracefully():
     assert any("No face detected" in msg for msg in out.get("messages", []))
 
 
-
 def test_synthetic_demo_face_is_detected_and_passes_every_check():
     from src.demo_face import make_demo_face
 

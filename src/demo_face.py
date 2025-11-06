@@ -49,7 +49,9 @@ def make_demo_face(size: int = 640, seed: int = 7) -> np.ndarray:
     _draw_eye(img, cx - fx * 0.42, cy - fy * 0.12, fx, fy)
     _draw_eye(img, cx + fx * 0.42, cy - fy * 0.12, fx, fy)
 
-    cv2.line(img, (int(cx + fx * 0.03), int(cy - fy * 0.05)), (int(cx + fx * 0.06), int(cy + fy * 0.2)), (170, 122, 102), 4)
+    cv2.line(
+        img, (int(cx + fx * 0.03), int(cy - fy * 0.05)), (int(cx + fx * 0.06), int(cy + fy * 0.2)), (170, 122, 102), 4
+    )
     cv2.ellipse(img, (int(cx), int(cy + fy * 0.24)), (int(fx * 0.14), int(fy * 0.045)), 0, 0, 180, (150, 104, 88), 4)
 
     my = cy + fy * 0.48

@@ -1,5 +1,6 @@
 """Bounded decoding of an uploaded photo into the RGB array the pipeline uses."""
 
+import contextlib
 import io
 
 import cv2
@@ -42,8 +43,7 @@ def decode_upload(data: bytes) -> np.ndarray:
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as e:
         raise UploadError("This file could not be decoded as a JPEG or PNG image.") from e
 
-    try:
+    # A malformed EXIF block should not block an otherwise valid image.
+    with contextlib.suppress(OSError, ValueError):
         img = ImageOps.exif_transpose(img)
-    except (OSError, ValueError):
-        pass  # A malformed EXIF block should not block an otherwise valid image.
     return resize_max(np.array(img.convert("RGB")))

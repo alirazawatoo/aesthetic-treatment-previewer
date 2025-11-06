@@ -1,11 +1,10 @@
 import cv2
 import numpy as np
-from typing import Tuple
 from skimage.transform import PiecewiseAffineTransform, warp
 
 from .face_utils import (
-    lip_points_from_landmarks,
     lip_mask_from_landmarks,
+    lip_points_from_landmarks,
     lip_ring_mask_from_landmarks,
     under_eye_mask,
 )
@@ -22,7 +21,6 @@ def wrinkle_smoothing(image_rgb: np.ndarray, skin_mask: np.ndarray, intensity: i
     if intensity <= 0:
         return image_rgb
     alpha = np.clip(intensity / 100.0, 0.0, 1.0)
-    # Edge-preserving smoothing via bilateral filter
     bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
     sm_bgr = cv2.bilateralFilter(bgr, d=9, sigmaColor=75, sigmaSpace=75)
     sm_rgb = cv2.cvtColor(sm_bgr, cv2.COLOR_BGR2RGB)
@@ -34,10 +32,9 @@ def tone_evening(image_rgb: np.ndarray, skin_mask: np.ndarray, intensity: int) -
         return image_rgb
     alpha = np.clip(intensity / 100.0, 0.0, 1.0)
     lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
+    lightness, a, b = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    l_eq = clahe.apply(l)
-    lab_eq = cv2.merge([l_eq, a, b])
+    lab_eq = cv2.merge([clahe.apply(lightness), a, b])
     rgb_eq = cv2.cvtColor(lab_eq, cv2.COLOR_LAB2RGB)
     return _blend_masked(image_rgb, rgb_eq, skin_mask, alpha)
 
@@ -63,7 +60,6 @@ def apply_effects(image_rgb: np.ndarray, skin_mask: np.ndarray, wrinkle: int, to
     return out
 
 
-# ---------- New effects ----------
 def _feather(mask: np.ndarray, ksize: int = 11) -> np.ndarray:
     if ksize % 2 == 0:
         ksize += 1
@@ -92,7 +88,6 @@ def lip_filler(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensity: int) 
     src = lip_pts.astype(np.float32)
     c = np.mean(src, axis=0, keepdims=True)
     X = src - c
-    # PCA basis
     cov = np.cov(X.T)
     eigvals, eigvecs = np.linalg.eigh(cov)
     # Sort by descending variance: v0 ~ horizontal mouth axis, v1 ~ vertical
@@ -106,14 +101,9 @@ def lip_filler(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensity: int) 
     left_corner = src[np.argmin(src[:, 0])]
     right_corner = src[np.argmax(src[:, 0])]
     lip_width = max(8.0, float(right_corner[0] - left_corner[0]))
-    corner_scale = []
     X_ev = (V.T @ X.T).T  # points in eigen-basis
-    for i, p in enumerate(src):
-        d = min(np.linalg.norm(p - left_corner), np.linalg.norm(p - right_corner))
-        t = np.clip(d / (0.45 * lip_width), 0.0, 1.0)
-        w = 0.25 + 0.75 * t  # reduce near corners
-        corner_scale.append(w)
-    corner_scale = np.asarray(corner_scale, dtype=np.float32)
+    d = np.minimum(np.linalg.norm(src - left_corner, axis=1), np.linalg.norm(src - right_corner, axis=1))
+    corner_scale = (0.25 + 0.75 * np.clip(d / (0.45 * lip_width), 0.0, 1.0)).astype(np.float32)
 
     dst_list = []
     for i in range(src.shape[0]):
@@ -128,17 +118,19 @@ def lip_filler(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensity: int) 
     x1, y1 = np.max(src, axis=0)
     pad_x = max(6.0, (x1 - x0) * 0.25)
     pad_y = max(6.0, (y1 - y0) * 0.25)
-    # 8 anchors around ROI (corners + mid-edges)
-    anchors = np.array([
-        [x0 - pad_x, y0 - pad_y],
-        [(x0 + x1) / 2, y0 - pad_y],
-        [x1 + pad_x, y0 - pad_y],
-        [x0 - pad_x, (y0 + y1) / 2],
-        [x1 + pad_x, (y0 + y1) / 2],
-        [x0 - pad_x, y1 + pad_y],
-        [(x0 + x1) / 2, y1 + pad_y],
-        [x1 + pad_x, y1 + pad_y],
-    ], dtype=np.float32)
+    anchors = np.array(
+        [
+            [x0 - pad_x, y0 - pad_y],
+            [(x0 + x1) / 2, y0 - pad_y],
+            [x1 + pad_x, y0 - pad_y],
+            [x0 - pad_x, (y0 + y1) / 2],
+            [x1 + pad_x, (y0 + y1) / 2],
+            [x0 - pad_x, y1 + pad_y],
+            [(x0 + x1) / 2, y1 + pad_y],
+            [x1 + pad_x, y1 + pad_y],
+        ],
+        dtype=np.float32,
+    )
     src_all = np.vstack([src, anchors])
     dst_all = np.vstack([dst, anchors])
 
@@ -204,7 +196,6 @@ def under_eye_reduction(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensi
     mask_ref = cv2.erode(mask, kernel, iterations=1)
     mask_f = _feather(mask_ref, 11)
 
-    # Convert to LAB and brighten L inside the mask
     lab = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2LAB)
     L, A, B = cv2.split(lab)
     Lf = L.astype(np.float32)
@@ -218,7 +209,7 @@ def under_eye_reduction(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensi
 
     # Mild smoothing + detail suppression (frequency separation) within mask
     base = cv2.GaussianBlur(rgb_bright, (0, 0), sigmaX=2, sigmaY=2)
-    detail = (rgb_bright.astype(np.float32) - base.astype(np.float32))
+    detail = rgb_bright.astype(np.float32) - base.astype(np.float32)
     detail_scale = 1.0 - 0.6 * s
     suppressed = np.clip(base.astype(np.float32) + detail_scale * detail, 0, 255).astype(np.uint8)
     # Guided filter is only in opencv-contrib, which MediaPipe pulls in.

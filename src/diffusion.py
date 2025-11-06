@@ -10,7 +10,6 @@ If diffusers/torch are missing, raises ImportError with a clear message so the
 caller can inform the user.
 """
 
-from typing import Optional, Tuple
 import logging
 
 import cv2
@@ -44,9 +43,7 @@ def _ensure_pipeline(model_id: str = SDXL_INPAINT_MODEL_ID):
         import torch
         from diffusers import StableDiffusionXLInpaintPipeline
     except ImportError as e:
-        raise ImportError(
-            "Generative editing dependencies not installed. Install from requirements-ml.txt"
-        ) from e
+        raise ImportError("Generative editing dependencies not installed. Install from requirements-ml.txt") from e
 
     _DEVICE, _DTYPE = _get_device_and_dtype(torch)
 
@@ -55,7 +52,7 @@ def _ensure_pipeline(model_id: str = SDXL_INPAINT_MODEL_ID):
         model_id,
         torch_dtype=_DTYPE,
         local_files_only=True,
-        variant="fp16" if _DTYPE == torch.float16 else None,
+        variant="fp16" if torch.float16 == _DTYPE else None,
     )
     _PIPE.to(_DEVICE)
     _PIPE.enable_attention_slicing()
@@ -68,7 +65,7 @@ def _numpy_to_pil(img: np.ndarray) -> Image.Image:
     return Image.fromarray(img)
 
 
-def _roi_from_mask(mask: np.ndarray, pad: int = 16) -> Optional[Tuple[int, int, int, int]]:
+def _roi_from_mask(mask: np.ndarray, pad: int = 16) -> tuple[int, int, int, int] | None:
     ys, xs = np.where(mask > 0)
     if len(xs) == 0 or len(ys) == 0:
         return None
@@ -89,7 +86,7 @@ def sdxl_inpaint_edit(
     negative_prompt: str = "over-smooth, plastic skin, cartoon, drawing, lipstick, makeup, heavy makeup",
     strength: float = 0.55,
     steps: int = 14,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     model_id: str = SDXL_INPAINT_MODEL_ID,
 ) -> np.ndarray:
     """Run SDXL inpainting within a tight ROI defined by mask.
@@ -97,7 +94,6 @@ def sdxl_inpaint_edit(
     image_rgb: HxWx3 uint8
     mask: HxW uint8 where 255 indicates region to modify
     """
-    # Compute ROI around the mask to speed up
     roi = _roi_from_mask(mask)
     if roi is None:
         return image_rgb
@@ -113,14 +109,13 @@ def sdxl_inpaint_edit(
     scale = min(1.0, max_side / float(max(h, w)))
     target_w, target_h = int(w * scale), int(h * scale)
     if scale < 1.0:
-        img_in = np.ascontiguousarray(np.round(
-            cv2.resize(img_roi, (target_w, target_h), interpolation=cv2.INTER_AREA)
-        ).astype(np.uint8))
+        img_in = np.ascontiguousarray(
+            np.round(cv2.resize(img_roi, (target_w, target_h), interpolation=cv2.INTER_AREA)).astype(np.uint8)
+        )
         mask_in = np.ascontiguousarray(cv2.resize(mask_roi, (target_w, target_h), interpolation=cv2.INTER_NEAREST))
     else:
         img_in, mask_in = img_roi, mask_roi
 
-    # Convert to PIL for diffusers
     init_pil = _numpy_to_pil(img_in)
     mask_pil = _numpy_to_pil(mask_in)
 
@@ -143,7 +138,6 @@ def sdxl_inpaint_edit(
 
     out_np = np.array(out)
 
-    # Resize back to ROI size, paste into original using mask as alpha
     if (out_np.shape[1], out_np.shape[0]) != (w, h):
         out_np = cv2.resize(out_np, (w, h), interpolation=cv2.INTER_CUBIC)
 

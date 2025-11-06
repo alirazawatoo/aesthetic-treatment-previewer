@@ -1,19 +1,18 @@
 import logging
-from typing import Dict
 
 import cv2
 import numpy as np
 
-from .face_utils import detect_face_landmarks
 from .config import (
     QC_BLUR_TARGET_WIDTH,
     QC_BLUR_VARIANCE_THRESHOLD,
     QC_LIGHTING_MEAN_RANGE,
-    QC_LIGHTING_STD_MIN,
     QC_LIGHTING_OVEREXPOSED_MAX_FRAC,
+    QC_LIGHTING_STD_MIN,
     QC_LIGHTING_UNDEREXPOSED_MAX_FRAC,
     QC_ORIENTATION_MAX_ABS_DEG,
 )
+from .face_utils import detect_face_landmarks
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ def check_blur(
     image_rgb: np.ndarray,
     target_w: int = QC_BLUR_TARGET_WIDTH,
     threshold: float = QC_BLUR_VARIANCE_THRESHOLD,
-) -> Dict:
+) -> dict:
     h, w = image_rgb.shape[:2]
     scale = target_w / float(w)
     resized = cv2.resize(image_rgb, (target_w, int(h * scale))) if w > target_w else image_rgb
@@ -36,7 +35,7 @@ def check_blur(
     return {"pass": passed, "variance": var}
 
 
-def check_lighting(image_rgb: np.ndarray) -> Dict:
+def check_lighting(image_rgb: np.ndarray) -> dict:
     # Use HSV V channel statistics
     hsv = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2HSV)
     v = hsv[:, :, 2]
@@ -58,13 +57,13 @@ def check_lighting(image_rgb: np.ndarray) -> Dict:
 def check_orientation(
     roll_deg: float,
     max_abs_deg: float = QC_ORIENTATION_MAX_ABS_DEG,
-) -> Dict:
+) -> dict:
     passed = abs(roll_deg) <= max_abs_deg
     return {"pass": passed, "roll_deg": float(roll_deg)}
 
 
-def run_qc(image_rgb: np.ndarray) -> Dict:
-    out: Dict = {"overall_pass": False, "messages": []}
+def run_qc(image_rgb: np.ndarray) -> dict:
+    out: dict = {"overall_pass": False, "messages": []}
 
     face = detect_face_landmarks(image_rgb)
     if face is None:

@@ -26,7 +26,7 @@ def test_mesh_covers_the_drawn_face_upright(demo):
     image, face = demo
     assert face["landmarks_px"].shape == (478, 2)
     x, y, w, h = face["bbox"]
-    assert 0 <= x and 0 <= y and x + w <= image.shape[1] and y + h <= image.shape[0]
+    assert x >= 0 and y >= 0 and x + w <= image.shape[1] and y + h <= image.shape[0]
     assert abs(face["roll_deg"]) < 5
 
 

@@ -1,2 +1,13 @@
--r requirements.txt
-mediapipe==0.10.9
+# Optional MediaPipe FaceMesh landmarks for the lip and under-eye previews.
+# Install this file INSTEAD of requirements.txt, not on top of it:
+#   - MediaPipe 1.x removed the FaceMesh "solutions" API this app uses, and the
+#     last 0.10.x release needs protobuf<5 and NumPy 1.x, which in turn caps
+#     Streamlit at 1.60 and Pillow at 12.3.
+#   - MediaPipe depends on opencv-contrib-python (a GUI build), which replaces
+#     the headless wheel and needs libGL/GLib on Linux (the Dockerfile adds them).
+streamlit==1.60.0
+numpy==1.26.4
+opencv-contrib-python==4.11.0.86
+scikit-image==0.26.0
+Pillow==12.3.0
+mediapipe==0.10.18

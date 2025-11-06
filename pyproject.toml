@@ -1,0 +1,13 @@
+[project]
+name = "dermal-treatment-preview"
+version = "0.2.0"
+description = "Local Streamlit sketch of masked skin-image adjustments on a single photo"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]

@@ -1,23 +1,13 @@
-# Optional heavy ML dependencies for generative editing (SDXL inpainting)
-torch
-diffusers
-transformers
-accelerate
-safetensors
-
-# Optional ML dependencies for generative editing (SDXL inpainting)
-# Install with: pip install -r requirements-ml.txt
-# Notes:
-# - On Apple Silicon, PyTorch uses MPS by default (no CUDA). Wheels are large; first install may take time.
-# - Keep your base requirements.txt as-is; these are additive and optional.
-
-# Core
-torch==2.3.1
-transformers==4.44.2
-accelerate==0.33.0
-safetensors==0.4.3
-# Diffusers (SDXL inpainting)
-diffusers==0.30.3
-# Optional image utils
-scipy==1.11.4
-# (InstantID/IP-Adapter can be added later if you choose to enable identity adapters)
+# Optional SDXL inpainting stack, installed on top of requirements.txt.
+# Weights are never downloaded by the app (local_files_only=True); provision a
+# compatible inpainting model in the Hugging Face cache yourself.
+#
+# CPU-only torch wheels keep the install to a few hundred MB:
+#   pip install -r requirements-ml.txt --extra-index-url https://download.pytorch.org/whl/cpu
+-r requirements.txt
+torch==2.15.0
+diffusers==0.42.1
+# transformers loads the SDXL text encoders; accelerate and safetensors load weights.
+transformers==5.22.2
+accelerate==1.15.0
+safetensors==0.8.0

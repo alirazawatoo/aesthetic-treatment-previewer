@@ -97,7 +97,7 @@ with qc_col:
         st.warning(m)
 
 with img_col:
-    st.image(image_rgb, caption="Original", use_column_width=True)
+    st.image(image_rgb, caption="Original", width="stretch")
 
 ok_to_process = qc.get("overall_pass", False) or proceed_anyway
 if not ok_to_process:
@@ -190,9 +190,9 @@ ssim_val = compute_identity_similarity(image_rgb, result_rgb, bbox)
 
 c1, c2 = st.columns(2)
 with c1:
-    st.image(image_rgb, caption="Before", use_column_width=True)
+    st.image(image_rgb, caption="Before", width="stretch")
 with c2:
-    st.image(result_rgb, caption="After", use_column_width=True)
+    st.image(result_rgb, caption="After", width="stretch")
 
 st.write(f"Structural similarity (SSIM on the selected face crop): {ssim_val:.3f}")
 st.caption("This pixel-structure comparison is not biometric identity verification or evidence of a likely treatment outcome.")

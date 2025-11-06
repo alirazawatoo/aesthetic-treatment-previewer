@@ -164,19 +164,19 @@ def lip_filler(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensity: int) 
     hsv2 = cv2.merge([h, sv, vv]).astype(np.uint8)
     colored = cv2.cvtColor(hsv2, cv2.COLOR_HSV2RGB)
 
-    # Seamless (Poisson) clone for realistic boundaries, fallback to alpha blend
-    try:
-        moments = cv2.moments(lip_mask)
-        if moments["m00"] > 0:
-            cx = int(moments["m10"] / moments["m00"])
-            cy = int(moments["m01"] / moments["m00"])
-            src_bgr = cv2.cvtColor(colored, cv2.COLOR_RGB2BGR)
-            dst_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+    # Seamless (Poisson) clone for realistic boundaries. OpenCV rejects masks
+    # whose bounding box touches the image border; those fall back to alpha blend.
+    moments = cv2.moments(lip_mask)
+    if moments["m00"] > 0:
+        cx = int(moments["m10"] / moments["m00"])
+        cy = int(moments["m01"] / moments["m00"])
+        src_bgr = cv2.cvtColor(colored, cv2.COLOR_RGB2BGR)
+        dst_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+        try:
             clone_bgr = cv2.seamlessClone(src_bgr, dst_bgr, lip_mask, (cx, cy), cv2.NORMAL_CLONE)
-            clone_rgb = cv2.cvtColor(clone_bgr, cv2.COLOR_BGR2RGB)
-            return clone_rgb
-    except Exception:
-        pass
+            return cv2.cvtColor(clone_bgr, cv2.COLOR_BGR2RGB)
+        except cv2.error:
+            pass
     lip_mask_f = _feather(lip_mask, 9)
     return _blend_masked(image_rgb, colored, lip_mask_f, alpha=1.0)
 
@@ -222,12 +222,9 @@ def under_eye_reduction(image_rgb: np.ndarray, landmarks_px: np.ndarray, intensi
     detail = (rgb_bright.astype(np.float32) - base.astype(np.float32))
     detail_scale = 1.0 - 0.6 * s
     suppressed = np.clip(base.astype(np.float32) + detail_scale * detail, 0, 255).astype(np.uint8)
-    # Optional guided filter edge-preserving refinement if available (opencv-contrib)
-    try:
-        gf = cv2.ximgproc.guidedFilter(image_rgb, suppressed, int(5 + 5 * s), 1e-3)
-        suppressed = gf
-    except Exception:
-        pass
+    # Guided filter is only in opencv-contrib, which MediaPipe pulls in.
+    if hasattr(cv2, "ximgproc"):
+        suppressed = cv2.ximgproc.guidedFilter(image_rgb, suppressed, int(5 + 5 * s), 1e-3)
     bgr = cv2.cvtColor(suppressed, cv2.COLOR_RGB2BGR)
     sm_bgr = cv2.bilateralFilter(bgr, d=7, sigmaColor=40, sigmaSpace=40)
     sm_rgb = cv2.cvtColor(sm_bgr, cv2.COLOR_BGR2RGB)

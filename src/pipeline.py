@@ -167,8 +167,8 @@ def compute_identity_similarity(
     orig_g_resized = cv2.resize(orig_g, (min_w, min_h))
     res_g_resized = cv2.resize(res_g, (min_w, min_h))
 
-    try:
-        return float(ssim(orig_g_resized, res_g_resized))
-    except Exception:
+    # SSIM's default 7x7 window cannot run on a smaller crop.
+    if min(min_h, min_w) < 7:
         return 0.0
+    return float(ssim(orig_g_resized, res_g_resized))
 

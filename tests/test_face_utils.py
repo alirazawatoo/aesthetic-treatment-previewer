@@ -48,3 +48,10 @@ def test_coincident_lip_points_produce_an_empty_ring():
     landmarks = np.full((500,2),100,dtype=np.float32)
     mask = face_utils.lip_ring_mask_from_landmarks(np.zeros((200,200,3),dtype=np.uint8),landmarks)
     assert not np.any(mask)
+
+
+def test_lip_ring_is_unavailable_when_landmark_array_is_too_short():
+    # 402 points passes the size sanity check but lacks index 405.
+    landmarks = np.zeros((402, 2), dtype=np.float32)
+    image = np.zeros((50, 50, 3), dtype=np.uint8)
+    assert face_utils.lip_ring_mask_from_landmarks(image, landmarks) is None

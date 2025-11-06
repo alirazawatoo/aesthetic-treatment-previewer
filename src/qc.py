@@ -76,7 +76,7 @@ def run_qc(image_rgb: np.ndarray) -> Dict:
 
     blur = check_blur(image_rgb)
     light = check_lighting(image_rgb)
-    orient = check_orientation(face["roll_deg"]) if face else {"pass": False, "roll_deg": 999}
+    orient = check_orientation(face["roll_deg"])
 
     out["blur"] = blur
     out["lighting"] = light

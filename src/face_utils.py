@@ -4,7 +4,7 @@ from typing import Dict, Optional, Tuple
 
 try:
     import mediapipe as mp
-except Exception as e:
+except ImportError:
     mp = None
 
 
@@ -118,15 +118,8 @@ def crop_with_bbox(image_rgb: np.ndarray, bbox: Tuple[int, int, int, int], margi
 
 
 # --- Extra regions: lips and eyes (MediaPipe path) ---
-def _unique_idxs_from_connections(connections) -> Optional[list]:
-    try:
-        idxs = set()
-        for a, b in connections:
-            idxs.add(a)
-            idxs.add(b)
-        return sorted(list(idxs))
-    except Exception:
-        return None
+def _unique_idxs_from_connections(connections) -> list:
+    return sorted({idx for pair in connections for idx in pair})
 
 
 def get_lip_indices() -> Optional[list]:
@@ -135,7 +128,7 @@ def get_lip_indices() -> Optional[list]:
     try:
         fmc = mp.solutions.face_mesh_connections
         return _unique_idxs_from_connections(fmc.FACEMESH_LIPS)
-    except Exception:
+    except AttributeError:  # MediaPipe builds without the legacy solutions API
         return None
 
 
@@ -149,7 +142,7 @@ def get_eye_indices(side: str) -> Optional[list]:
         else:
             conns = fmc.FACEMESH_RIGHT_EYE
         return _unique_idxs_from_connections(conns)
-    except Exception:
+    except AttributeError:
         return None
 
 
@@ -159,7 +152,7 @@ def lip_points_from_landmarks(landmarks_px: np.ndarray) -> Optional[np.ndarray]:
         return None
     try:
         return landmarks_px[idxs]
-    except Exception:
+    except IndexError:
         return None
 
 
@@ -181,7 +174,7 @@ def eye_polygon_from_landmarks(landmarks_px: np.ndarray, side: str) -> Optional[
         return None
     try:
         return landmarks_px[idxs]
-    except Exception:
+    except IndexError:
         return None
 
 
@@ -218,7 +211,7 @@ def lip_ring_mask_from_landmarks(image_rgb: np.ndarray, landmarks_px: np.ndarray
     try:
         outer = landmarks_px[_LIP_OUTER_IDX].astype(np.int32)
         inner = landmarks_px[_LIP_INNER_IDX].astype(np.int32)
-    except Exception:
+    except IndexError:
         return None
     mask_outer = np.zeros((h, w), dtype=np.uint8)
     mask_inner = np.zeros((h, w), dtype=np.uint8)

@@ -76,3 +76,14 @@ def test_classical_path_runs_without_generative_editing(monkeypatch):
 
     assert seen == [("lip", 50), ("eye", 50)]
     assert info == {"used_generative": False, "warnings": []}
+
+
+def test_structural_similarity_of_identical_crops_is_one():
+    rng = np.random.default_rng(0)
+    image = rng.integers(0, 255, size=(80, 80, 3), dtype=np.uint8)
+    assert pipeline.compute_identity_similarity(image, image.copy(), (10, 10, 50, 50)) == 1.0
+
+
+def test_structural_similarity_is_zero_for_crops_below_the_ssim_window():
+    image = np.zeros((40, 40, 3), dtype=np.uint8)
+    assert pipeline.compute_identity_similarity(image, image, (0, 0, 4, 4), margin=0.0) == 0.0

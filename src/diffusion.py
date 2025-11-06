@@ -1,12 +1,3 @@
-from typing import Optional, Tuple
-import logging
-
-import cv2
-import numpy as np
-from PIL import Image
-
-from .config import SDXL_INPAINT_MODEL_ID
-
 """
 SDXL inpainting-based editor with lazy imports.
 
@@ -18,6 +9,15 @@ and pastes back.
 If diffusers/torch are missing, raises ImportError with a clear message so the
 caller can inform the user.
 """
+
+from typing import Optional, Tuple
+import logging
+
+import cv2
+import numpy as np
+from PIL import Image
+
+from .config import SDXL_INPAINT_MODEL_ID
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +41,12 @@ def _ensure_pipeline(model_id: str = SDXL_INPAINT_MODEL_ID):
         return _PIPE, _DEVICE, _DTYPE
 
     try:
-        import torch  # noqa: F401
+        import torch
         from diffusers import StableDiffusionXLInpaintPipeline
-    except Exception as e:
-        logger.exception("Failed to import generative editing dependencies.")
+    except ImportError as e:
         raise ImportError(
             "Generative editing dependencies not installed. Install from requirements-ml.txt"
         ) from e
-
-    import torch
 
     _DEVICE, _DTYPE = _get_device_and_dtype(torch)
 

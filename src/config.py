@@ -1,10 +1,10 @@
-from typing import Tuple
-
 """
 Central configuration for QC thresholds, diffusion model selection,
 and default generative prompts. Centralizing these values makes it
 easier to tune behavior without touching core logic.
 """
+
+from typing import Tuple
 
 # QC configuration
 QC_BLUR_TARGET_WIDTH: int = 512

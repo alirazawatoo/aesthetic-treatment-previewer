@@ -1,6 +1,3 @@
-import numpy as np
-from typing import Optional, Dict
-
 """
 Lightweight face region segmentation helpers.
 
@@ -18,6 +15,9 @@ API
 
 If `landmarks_px` is None, returns empty dict.
 """
+
+import numpy as np
+from typing import Optional, Dict
 
 from .face_utils import (
     lip_ring_mask_from_landmarks,

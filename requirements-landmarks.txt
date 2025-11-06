@@ -11,3 +11,6 @@ opencv-contrib-python==4.11.0.86
 scikit-image==0.26.0
 Pillow==12.3.0
 mediapipe==0.10.18
+# Streamlit 1.60's gzip middleware subclasses Starlette internals that changed
+# in 1.8; with newer Starlette every image request fails with HTTP 500.
+starlette==1.7.0

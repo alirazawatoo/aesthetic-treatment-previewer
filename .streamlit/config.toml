@@ -1,4 +1,6 @@
 [server]
+# Uploads are faces; keep the server off the network unless asked.
+address = "127.0.0.1"
 maxUploadSize = 10
 headless = true
 

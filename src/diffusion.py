@@ -149,11 +149,10 @@ def sdxl_inpaint_edit(
     # Resize back to ROI size, paste into original using mask as alpha
     if (out_np.shape[1], out_np.shape[0]) != (w, h):
         out_np = cv2.resize(out_np, (w, h), interpolation=cv2.INTER_CUBIC)
-        mask_back = cv2.resize(mask_in, (w, h), interpolation=cv2.INTER_NEAREST)
-    else:
-        mask_back = mask_roi
 
+    # Composite with the full-resolution mask; a mask round-tripped through the
+    # downscaled ROI loses thin regions and leaks blocky edits past the edges.
     result = image_rgb.copy()
-    m = (mask_back.astype(np.float32) / 255.0)[..., None]
+    m = (mask_roi.astype(np.float32) / 255.0)[..., None]
     result[y0:y1, x0:x1] = (out_np.astype(np.float32) * m + img_roi.astype(np.float32) * (1 - m)).astype(np.uint8)
     return result

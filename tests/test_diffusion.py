@@ -97,3 +97,23 @@ def test_loader_requires_cached_weights(monkeypatch):
     monkeypatch.setattr(diffusion, "_get_device_and_dtype", lambda torch: ("cpu","float32"))
     diffusion._ensure_pipeline("synthetic-model")
     assert calls[0]["local_files_only"] is True
+
+
+def test_downscaled_roi_is_composited_with_full_resolution_mask(monkeypatch):
+    monkeypatch.setattr(
+        diffusion,
+        "_ensure_pipeline",
+        lambda model_id=None: (_FakePipeline(), "cpu", "float32"),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(Generator=_FakeGenerator))
+
+    # A 1000px ROI is downscaled to 768px for inference; single-pixel columns
+    # in the mask are dropped by nearest-neighbour resizing at that scale.
+    image = np.zeros((1000, 1000, 3), dtype=np.uint8)
+    mask = np.zeros((1000, 1000), dtype=np.uint8)
+    mask[:, ::4] = 255
+
+    out = diffusion.sdxl_inpaint_edit(image, mask, prompt="synthetic", seed=None)
+
+    edited = np.any(out != 0, axis=2)
+    assert np.array_equal(edited, mask > 0)

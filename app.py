@@ -1,214 +1,214 @@
-import io
 import hashlib
+import io
 
-import cv2
 import numpy as np
 import streamlit as st
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image
 
 from src.config import (
-    DEFAULT_LIP_PROMPT,
-    DEFAULT_LIP_NEGATIVE_PROMPT,
-    DEFAULT_EYE_PROMPT,
     DEFAULT_EYE_NEGATIVE_PROMPT,
+    DEFAULT_EYE_PROMPT,
+    DEFAULT_LIP_NEGATIVE_PROMPT,
+    DEFAULT_LIP_PROMPT,
+    QC_BLUR_VARIANCE_THRESHOLD,
+    QC_LIGHTING_MEAN_RANGE,
+    QC_ORIENTATION_MAX_ABS_DEG,
 )
+from src.demo_face import make_demo_face
 from src.pipeline import (
-    run_qc_pipeline,
-    compute_skin_mask,
     apply_adjustments_pipeline,
     apply_aesthetic_procedures_pipeline,
     compute_identity_similarity,
+    compute_skin_mask,
+    run_qc_pipeline,
+)
+from src.upload import UploadError, decode_upload
+
+SOURCE_UPLOAD = "Upload a photo"
+SOURCE_DEMO = "Synthetic demo face"
+
+st.set_page_config(page_title="Dermal treatment preview", layout="wide")
+
+st.title("Dermal treatment preview")
+st.markdown(
+    "Try skin smoothing, tone evening and pigment lightening on one photo, on this machine. "
+    "This is an image-editing sketch: it **does not predict treatment results and is not medical advice**."
 )
 
 
-st.set_page_config(page_title="Local Aesthetic Preview POC", layout="wide")
+def _load_source() -> tuple[str, np.ndarray] | None:
+    """Return (cache key, RGB image) for the chosen source, or None while waiting for an upload."""
+    source = st.radio("Image source", [SOURCE_UPLOAD, SOURCE_DEMO], horizontal=True)
+    if source == SOURCE_DEMO:
+        st.caption("A procedurally drawn face, so no real person's photo is needed to try the controls.")
+        return "demo", make_demo_face()
 
-st.title("Local image-effects preview")
-st.caption("Illustrative image editing only. Outputs do not predict treatment results, and structural similarity does not verify identity.")
-
-
-def _fix_orientation(img: Image.Image) -> Image.Image:
+    file = st.file_uploader(
+        "Photo of a face (JPEG or PNG, up to 10 MiB)",
+        type=["jpg", "jpeg", "png"],
+        help="Decoded in memory for this session only; the app writes no files.",
+    )
+    if file is None:
+        st.info(
+            "Upload a well-lit, front-facing photo to begin, or switch to the synthetic demo face. "
+            "Use a photo you have the right to edit."
+        )
+        return None
+    data = file.getvalue()
     try:
-        return ImageOps.exif_transpose(img)
-    except Exception:
-        return img
+        return hashlib.sha256(data).hexdigest(), decode_upload(data)
+    except UploadError as e:
+        st.error(str(e))
+        return None
 
 
-def _pil_to_rgb(img: Image.Image) -> np.ndarray:
-    return np.array(img.convert("RGB"))
+def _analyse(key: str, image_rgb: np.ndarray) -> dict:
+    """Run QC once per image per session; sliders rerun the script but not face detection."""
+    cached = st.session_state.get("analysis")
+    if cached is None or cached["key"] != key:
+        with st.spinner("Checking the photo..."):
+            cached = {"key": key, "qc": run_qc_pipeline(image_rgb)}
+        st.session_state["analysis"] = cached
+    return cached["qc"]
 
 
-def _resize_max(image_rgb: np.ndarray, max_side: int = 1280) -> np.ndarray:
-    h, w = image_rgb.shape[:2]
-    scale = min(1.0, max_side / float(max(h, w)))
-    if scale < 1.0:
-        return cv2.resize(image_rgb, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
-    return image_rgb
+def _status(passed: bool) -> str:
+    return ":green[**Pass**]" if passed else ":orange[**Needs attention**]"
 
 
-def _bytes_hash(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()[:10]
+def _show_qc(qc: dict) -> None:
+    st.subheader("Photo checks")
+    if not qc.get("face_present"):
+        st.error("No face was found. Use a front-facing photo with the whole face in frame.")
+        return
+    lo, hi = QC_LIGHTING_MEAN_RANGE
+    rows = [
+        ("Face", True, "found" + (" with landmarks" if qc["face"].get("landmarks_px") is not None else " (box only)")),
+        (
+            "Sharpness",
+            qc["blur"]["pass"],
+            f"variance {qc['blur']['variance']:.0f}, needs {QC_BLUR_VARIANCE_THRESHOLD:.0f}+",
+        ),
+        (
+            "Lighting",
+            qc["lighting"]["pass"],
+            f"mean {qc['lighting']['mean']:.0f} (aim {lo:.0f}-{hi:.0f}), spread {qc['lighting']['std']:.0f}",
+        ),
+        (
+            "Head tilt",
+            qc["orientation"]["pass"],
+            f"{qc['orientation']['roll_deg']:.1f} degrees, limit {QC_ORIENTATION_MAX_ABS_DEG:.0f}",
+        ),
+    ]
+    for name, passed, detail in rows:
+        st.markdown(f"{name}: {_status(passed)}  \n:gray[{detail}]")
+    for message in qc.get("messages", []):
+        st.warning(message)
 
 
-with st.sidebar:
-    st.header("Upload & QC")
-    file = st.file_uploader("Upload a selfie (JPG/PNG)", type=["jpg", "jpeg", "png"]) 
-    proceed_anyway = st.checkbox("Proceed even if QC fails", value=False)
-
-if file is None:
-    st.info("Upload a selfie to begin.")
+loaded = _load_source()
+if loaded is None:
     st.stop()
+key, image_rgb = loaded
+qc = _analyse(key, image_rgb)
 
-# Bound decoded image size before conversion; no uploaded image is saved by this app.
-if file.size > 10 * 1024 * 1024:
-    st.error("Choose a JPEG or PNG no larger than 10 MiB.")
-    st.stop()
-try:
-    pil = Image.open(file)
-    if pil.format not in {"JPEG", "PNG"} or pil.width * pil.height > 20_000_000:
-        raise ValueError("Choose a JPEG or PNG with at most 20 million pixels.")
-    pil.load()
-    orig_pil = _fix_orientation(pil)
-    image_rgb = _resize_max(_pil_to_rgb(orig_pil), max_side=1280)
-except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
-    st.error("This image could not be decoded within the supported JPEG/PNG limits.")
-    st.stop()
-
-# QC
-qc = run_qc_pipeline(image_rgb)
-
-qc_col, img_col = st.columns([1, 2])
+qc_col, img_col = st.columns([1, 2], gap="large")
 with qc_col:
-    st.subheader("Quality Checks")
-    if not qc.get("face_present", False):
-        st.error("No face detected.")
-    else:
-        st.success("Face detected.")
-    if "blur" in qc:
-        st.write(f"Blur variance: {qc['blur']['variance']:.1f}")
-        st.write("Blur check: ", "✅ Pass" if qc['blur']['pass'] else "❌ Fail")
-    if "orientation" in qc:
-        st.write(f"Roll: {qc['orientation']['roll_deg']:.1f}°")
-        st.write("Orientation: ", "✅ Pass" if qc['orientation']['pass'] else "❌ Fail")
-    if "lighting" in qc:
-        st.write(f"Lighting mean: {qc['lighting']['mean']:.1f}, std: {qc['lighting']['std']:.1f}")
-        st.write("Lighting: ", "✅ Pass" if qc['lighting']['pass'] else "❌ Fail")
-    for m in qc.get("messages", []):
-        st.warning(m)
-
+    _show_qc(qc)
+    proceed_anyway = False
+    if qc.get("face_present") and not qc.get("overall_pass"):
+        proceed_anyway = st.checkbox("Edit anyway; results may look worse")
 with img_col:
     st.image(image_rgb, caption="Original", width="stretch")
 
-ok_to_process = qc.get("overall_pass", False) or proceed_anyway
-if not ok_to_process:
-    st.stop()
-
-# Landmarks and skin mask
 face = qc.get("face")
-if face is None:
-    st.error("Could not compute landmarks.")
+if face is None or not (qc.get("overall_pass") or proceed_anyway):
     st.stop()
 
 try:
-    skin_mask = compute_skin_mask(image_rgb, face)  # uint8 0/255
-except Exception:
-    st.error("Could not compute skin mask for the detected face.")
+    skin_mask = compute_skin_mask(image_rgb, face)
+except ValueError:
+    st.error("The detected face has no usable region to edit.")
     st.stop()
 
-st.subheader("Adjustments")
+st.subheader("Skin adjustments")
 col1, col2, col3 = st.columns(3)
 with col1:
-    wrinkle = st.slider("Wrinkle smoothing", 0, 100, 40, step=5)
+    wrinkle = st.slider("Wrinkle smoothing", 0, 100, 40, step=5, help="Edge-preserving blur inside the face region.")
 with col2:
-    tone = st.slider("Tone evening", 0, 100, 25, step=5)
+    tone = st.slider("Tone evening", 0, 100, 25, step=5, help="Local contrast equalisation of lightness.")
 with col3:
-    pigment = st.slider("Pigmentation reduction", 0, 100, 20, step=5)
+    pigment = st.slider("Pigment lightening", 0, 100, 20, step=5, help="Lifts pixels darker than their surroundings.")
 
-# Aesthetic procedures (beta)
-st.subheader("Aesthetic procedures (beta)")
-
-# Generative editing toggle (SDXL inpainting). Falls back to classical CV if off/missing deps.
-gen_col1, gen_col2, gen_col3 = st.columns([1, 1, 2])
-with gen_col1:
-    use_gen = st.toggle("Use generative editing", value=False, help="Optional SDXL image editing. Requires separately installed ML dependencies and already cached model weights; downloads are disabled here.")
-with gen_col2:
-    gen_strength = st.slider("Gen strength", 0.10, 0.90, 0.55, 0.05, help="How strongly to apply generative change inside the mask.")
-with gen_col3:
-    gen_steps = st.slider("Gen steps", 4, 40, 14, 1, help="More steps = higher quality, slower.")
-
-# Advanced controls for prompts and reproducibility
-adv = st.expander("Advanced generative controls", expanded=False)
-with adv:
-    lip_prompt_user = st.text_input("Lip prompt", value=DEFAULT_LIP_PROMPT)
-    lip_neg_user = st.text_input("Lip negative prompt", value=DEFAULT_LIP_NEGATIVE_PROMPT)
-    eye_prompt_user = st.text_input("Under-eye prompt", value=DEFAULT_EYE_PROMPT)
-    eye_neg_user = st.text_input("Under-eye negative prompt", value=DEFAULT_EYE_NEGATIVE_PROMPT)
-    seed_user = st.number_input("Seed (optional)", value=42, step=1)
-
+has_landmarks = face.get("landmarks_px") is not None
+st.subheader("Lip and under-eye previews")
+if not has_landmarks:
+    st.caption(
+        "These need MediaPipe face landmarks. Install requirements-landmarks.txt; "
+        "the box-only fallback detector cannot locate lips or eyes."
+    )
 lp_col, ue_col = st.columns(2)
 with lp_col:
-    lip_enabled = face.get("landmarks_px") is not None
-    lip_help = "Requires landmarks. If generative is on, uses SDXL inpaint for realism; otherwise uses fast warp." if lip_enabled else "Requires MediaPipe FaceMesh landmarks."
-    lip_int = st.slider("Lip filler", 0, 100, 0, step=5, help=lip_help, disabled=not lip_enabled)
+    lip_int = st.slider("Lip volume", 0, 100, 0, step=5, disabled=not has_landmarks)
 with ue_col:
-    ue_enabled = face.get("landmarks_px") is not None
-    ue_help = "Requires landmarks. If generative is on, uses SDXL inpaint; otherwise local smoothing/brightening." if ue_enabled else "Requires MediaPipe FaceMesh landmarks."
-    ue_int = st.slider("Under-eye reduction", 0, 100, 0, step=5, help=ue_help, disabled=not ue_enabled)
+    ue_int = st.slider("Under-eye lightening", 0, 100, 0, step=5, disabled=not has_landmarks)
 
-# Process
-result_rgb = apply_adjustments_pipeline(
-    image_rgb,
-    skin_mask,
-    wrinkle=wrinkle,
-    tone=tone,
-    pigment=pigment,
+with st.expander("Generative editing (optional, off by default)"):
+    st.caption(
+        "Uses SDXL inpainting for the lip and under-eye previews. Needs requirements-ml.txt and model weights "
+        "already in the local Hugging Face cache; nothing is downloaded. Without them the classical effects are used."
+    )
+    use_gen = st.toggle("Use generative editing", value=False, disabled=not has_landmarks)
+    gen_strength = st.slider("Strength", 0.10, 0.90, 0.55, 0.05, disabled=not use_gen)
+    gen_steps = st.slider("Steps", 4, 40, 14, 1, disabled=not use_gen, help="More steps are slower.")
+    lip_prompt = st.text_input("Lip prompt", value=DEFAULT_LIP_PROMPT, disabled=not use_gen)
+    lip_negative = st.text_input("Lip negative prompt", value=DEFAULT_LIP_NEGATIVE_PROMPT, disabled=not use_gen)
+    eye_prompt = st.text_input("Under-eye prompt", value=DEFAULT_EYE_PROMPT, disabled=not use_gen)
+    eye_negative = st.text_input("Under-eye negative prompt", value=DEFAULT_EYE_NEGATIVE_PROMPT, disabled=not use_gen)
+    seed = st.number_input("Seed", value=42, step=1, disabled=not use_gen)
+
+with st.spinner("Applying adjustments..."):
+    result_rgb = apply_adjustments_pipeline(image_rgb, skin_mask, wrinkle=wrinkle, tone=tone, pigment=pigment)
+    if has_landmarks:
+        result_rgb, proc_info = apply_aesthetic_procedures_pipeline(
+            base_rgb=result_rgb,
+            image_for_regions=image_rgb,
+            face=face,
+            use_gen=use_gen,
+            gen_strength=gen_strength,
+            gen_steps=gen_steps,
+            lip_int=lip_int,
+            ue_int=ue_int,
+            lip_prompt=lip_prompt,
+            lip_negative_prompt=lip_negative,
+            eye_prompt=eye_prompt,
+            eye_negative_prompt=eye_negative,
+            seed=int(seed),
+        )
+        for msg in proc_info["warnings"]:
+            st.info(msg)
+    ssim_val = compute_identity_similarity(image_rgb, result_rgb, face["bbox"])
+
+st.subheader("Before and after")
+before_col, after_col = st.columns(2)
+with before_col:
+    st.image(image_rgb, caption="Before", width="stretch")
+with after_col:
+    st.image(result_rgb, caption="After (illustrative edit)", width="stretch")
+
+st.metric(
+    "Structural similarity of the face crop",
+    f"{ssim_val:.3f}",
+    help="SSIM compares pixel structure (1.0 means unchanged). It is not identity verification "
+    "and says nothing about how a real treatment would look.",
 )
 
-# Apply procedures (require landmarks)
-if face.get("landmarks_px") is not None:
-    result_rgb, proc_info = apply_aesthetic_procedures_pipeline(
-        base_rgb=result_rgb,
-        image_for_regions=image_rgb,
-        face=face,
-        use_gen=use_gen,
-        gen_strength=gen_strength,
-        gen_steps=gen_steps,
-        lip_int=lip_int,
-        ue_int=ue_int,
-        lip_prompt=lip_prompt_user,
-        lip_negative_prompt=lip_neg_user,
-        eye_prompt=eye_prompt_user,
-        eye_negative_prompt=eye_neg_user,
-        seed=int(seed_user),
-    )
-    for msg in proc_info.get("warnings", []):
-        st.info(msg)
-
-# Identity similarity via SSIM on face crop
-bbox = face["bbox"]
-ssim_val = compute_identity_similarity(image_rgb, result_rgb, bbox)
-
-c1, c2 = st.columns(2)
-with c1:
-    st.image(image_rgb, caption="Before", width="stretch")
-with c2:
-    st.image(result_rgb, caption="After", width="stretch")
-
-st.write(f"Structural similarity (SSIM on the selected face crop): {ssim_val:.3f}")
-st.caption("This pixel-structure comparison is not biometric identity verification or evidence of a likely treatment outcome.")
-
-# Download
-res_pil = Image.fromarray(result_rgb)
 buf = io.BytesIO()
-res_pil.save(buf, format="PNG")
-bytes_data = buf.getvalue()
-hash_id = _bytes_hash(bytes_data)
-
+Image.fromarray(result_rgb).save(buf, format="PNG")
+png = buf.getvalue()
 st.download_button(
-    label=f"Download After Image (after_{hash_id}.png)",
-    data=bytes_data,
-    file_name=f"after_{hash_id}.png",
+    "Download the edited image (PNG)",
+    data=png,
+    file_name=f"after_{hashlib.sha256(png).hexdigest()[:10]}.png",
     mime="image/png",
 )
-
-

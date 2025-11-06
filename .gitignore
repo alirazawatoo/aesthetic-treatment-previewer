@@ -10,8 +10,8 @@ env/
 # OS
 .DS_Store
 
-# Streamlit
-.streamlit/
+# Streamlit (config.toml is tracked; secrets never are)
+.streamlit/secrets.toml
 
 # Editors
 .vscode/

@@ -1,0 +1,22 @@
+[server]
+maxUploadSize = 10
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+
+# Warm bone and eucalyptus: a calm, clinical-adjacent palette that keeps skin
+# tones in the photos as the most saturated thing on screen.
+[theme]
+base = "light"
+primaryColor = "#3F6B5C"
+backgroundColor = "#F6F3EE"
+secondaryBackgroundColor = "#EAE4DA"
+textColor = "#2A2421"
+borderColor = "#D6CEC2"
+baseRadius = "0.4rem"
+font = "Figtree:https://fonts.googleapis.com/css2?family=Figtree:wght@400;600&display=swap"
+headingFont = "Newsreader:https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap"
